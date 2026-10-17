@@ -1,0 +1,24 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: market-generator
+  namespace: ml-pipeline-us-east
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: market-generator
+  template:
+    metadata:
+      labels:
+        app: market-generator
+    spec:
+      containers:
+      - name: market-generator
+        image: market-generator:latest
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: KAFKA_BROKER
+          value: "kafka:9092"
+        - name: TOPIC
+          value: "market-ticks"

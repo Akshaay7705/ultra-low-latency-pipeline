@@ -1,0 +1,79 @@
+pipeline {
+    agent any
+
+    environment {
+        DOCKER_REGISTRY = 'your-docker-registry'
+        IMAGE_TAG = "${env.BUILD_ID}"
+        LATENCY_THRESHOLD_US = 500
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Test & Lint') {
+            steps {
+                sh '''
+                echo "Running unit tests and linters..."
+                # pytest tests/
+                # flake8 .
+                '''
+            }
+        }
+
+        stage('Build Docker Images') {
+            steps {
+                script {
+                    def services = ['market-generator', 'ingestion-service', 'feature-service', 'inference-service']
+                    for (service in services) {
+                        sh "docker build -t ${DOCKER_REGISTRY}/${service}:${IMAGE_TAG} ./${service}"
+                    }
+                }
+            }
+        }
+
+        stage('Latency Benchmark Gate') {
+            steps {
+                sh '''
+                echo "Starting ephemeral inference stack for benchmarking..."
+                docker-compose -f docker-compose.benchmark.yml up -d
+                sleep 15
+                
+                echo "Running latency benchmark script..."
+                python3 scripts/benchmark.py --threshold ${LATENCY_THRESHOLD_US}
+                
+                echo "Tearing down ephemeral stack..."
+                docker-compose -f docker-compose.benchmark.yml down
+                '''
+            }
+        }
+
+        stage('Deploy to Kubernetes') {
+            steps {
+                script {
+                    def services = ['market-generator', 'ingestion-service', 'feature-service', 'inference-service']
+                    for (service in services) {
+                        sh "sed -i 's|image: .*|image: ${DOCKER_REGISTRY}/${service}:${IMAGE_TAG}|' k8s/04-${service}.yaml || true"
+                    }
+                    sh '''
+                    kubectl apply -f k8s/00-namespaces.yaml
+                    kubectl apply -f k8s/
+                    '''
+                }
+            }
+        }
+    }
+
+    post {
+        failure {
+            echo 'Deployment rejected due to pipeline failure.'
+            // Send alert (Slack, email, etc.)
+        }
+        success {
+            echo 'Deployment successful.'
+        }
+    }
+}

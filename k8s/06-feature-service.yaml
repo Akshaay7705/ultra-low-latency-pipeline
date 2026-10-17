@@ -1,0 +1,26 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: feature-service
+  namespace: ml-pipeline-us-east
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: feature-service
+  template:
+    metadata:
+      labels:
+        app: feature-service
+    spec:
+      containers:
+      - name: feature-service
+        image: feature-service:latest
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: KAFKA_BROKER
+          value: "kafka:9092"
+        - name: IN_TOPIC
+          value: "normalized-ticks"
+        - name: OUT_TOPIC
+          value: "ml-features"
